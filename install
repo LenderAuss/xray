@@ -64,11 +64,11 @@ cat << EOF > /usr/local/etc/xray/config.json
                 "security": "reality",
                 "realitySettings": {
                     "show": false,
-                    "dest": "github.com:443",
+                    "dest": "ozon.ru:443",
                     "xver": 0,
                     "serverNames": [
-                        "github.com",
-                        "www.github.com"
+                        "ozon.ru",
+                        "www.ozon.ru"
                     ],
                     "privateKey": "$privatkey",
                     "minClientVer": "",
