@@ -1,6 +1,6 @@
 #!/bin/bash
 apt update
-apt install qrencode curl jq -y
+apt install qrencode curl jq bc -y
 
 # Включаем bbr
 bbr=$(sysctl -a | grep net.ipv4.tcp_congestion_control)
@@ -240,10 +240,13 @@ echo ${link} | qrencode -t ansiutf8
 SCRIPT
 chmod +x /usr/local/bin/newuser
 
-# Исполняемый файл для удаления клиентов
+# Исполняемый файл для удаления клиентов (ОБНОВЛЕННЫЙ - удаление по email)
 cat << 'SCRIPT' > /usr/local/bin/rmuser
 #!/bin/bash
-emails=($(jq -r '.inbounds[0].settings.clients[].email' /usr/local/etc/xray/config.json))
+CONFIG_FILE="/usr/local/etc/xray/config.json"
+
+# Получаем список email
+emails=($(jq -r '.inbounds[0].settings.clients[].email' "$CONFIG_FILE"))
 
 if [[ ${#emails[@]} -eq 0 ]]; then
     echo "Нет клиентов для удаления."
@@ -264,18 +267,24 @@ fi
 
 selected_email="${emails[$((choice - 1))]}"
 
+# Защита главного пользователя
 if [[ "$selected_email" == "main" ]]; then
-    echo "Нельзя удалить главного пользователя!"
+    echo "❌ Нельзя удалить главного пользователя!"
     exit 1
 fi
 
+# Удаляем по email (безопасно!)
 jq --arg email "$selected_email" \
-   '(.inbounds[0].settings.clients) |= map(select(.email != $email))' \
-   /usr/local/etc/xray/config.json > tmp && mv tmp /usr/local/etc/xray/config.json
+   '.inbounds[0].settings.clients |= map(select(.email != $email))' \
+   "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
 
-systemctl restart xray
-
-echo "Клиент $selected_email удалён."
+if [ $? -eq 0 ]; then
+    systemctl restart xray
+    echo "✅ Клиент $selected_email удалён."
+else
+    echo "❌ Ошибка при удалении клиента $selected_email"
+    exit 1
+fi
 SCRIPT
 chmod +x /usr/local/bin/rmuser
 
@@ -423,7 +432,7 @@ cat << 'EOF' > $HOME/help
 
     mainuser - выводит ссылку для подключения основного пользователя
     newuser - создает нового пользователя (с указанием подписки)
-    rmuser - удаление пользователей
+    rmuser - удаление пользователей (по email - безопасно!)
     sharelink - выводит список пользователей и позволяет создать для них ссылки
     userlist - выводит список клиентов с подписками и датами создания
     userinfo - показывает детальную информацию о выбранном пользователе
@@ -435,6 +444,7 @@ cat << 'EOF' > $HOME/help
     • Уникальный UUID для каждого
     • Отслеживание статуса подписки (y/n)
     • Дата создания ключа
+    • Удаление по email (защита от сбоя индексов!)
 
 Файл конфигурации:
     /usr/local/etc/xray/config.json
