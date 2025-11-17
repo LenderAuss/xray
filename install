@@ -24,8 +24,8 @@ echo "uuid: $(xray uuid)" >> /usr/local/etc/xray/.keys
 xray x25519 >> /usr/local/etc/xray/.keys
 
 export uuid=$(awk -F': ' '/uuid/ {print $2}' /usr/local/etc/xray/.keys)
-export privatkey=$(awk '/Private key:/ {print $3}' /usr/local/etc/xray/.keys)
-export publickey=$(awk '/Public key:/ {print $3}' /usr/local/etc/xray/.keys)
+export privatkey=$(awk -F': ' '/PrivateKey/ {print $2}' /usr/local/etc/xray/.keys)
+export publickey=$(awk -F': ' '/Password/ {print $2}' /usr/local/etc/xray/.keys)
 export shortsid=$(awk -F': ' '/shortsid/ {print $2}' /usr/local/etc/xray/.keys)
 
 # Получаем дату создания для main пользователя
@@ -152,7 +152,7 @@ cat << 'SCRIPT' > /usr/local/bin/mainuser
 protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
 port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
 uuid=$(jq -r '.inbounds[0].settings.clients[0].id' /usr/local/etc/xray/config.json)
-pbk=$(awk '/Public key:/ {print $3}' /usr/local/etc/xray/.keys)
+pbk=$(awk -F': ' '/Password/ {print $2}' /usr/local/etc/xray/.keys)
 sid=$(awk -F': ' '/shortsid/ {print $2}' /usr/local/etc/xray/.keys)
 sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
 ip=$(timeout 3 curl -4 -s icanhazip.com)
@@ -220,7 +220,7 @@ systemctl restart xray
 # Генерируем ссылку
 protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
 port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
-pbk=$(awk '/Public key:/ {print $3}' /usr/local/etc/xray/.keys)
+pbk=$(awk -F': ' '/Password/ {print $2}' /usr/local/etc/xray/.keys)
 sid=$(awk -F': ' '/shortsid/ {print $2}' /usr/local/etc/xray/.keys)
 sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
 ip=$(curl -4 -s icanhazip.com)
@@ -337,7 +337,7 @@ selected_email="${emails[$selected_index]}"
 protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
 port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
 uuid=$(jq --argjson index "$selected_index" -r '.inbounds[0].settings.clients[$index].id' /usr/local/etc/xray/config.json)
-pbk=$(awk '/Public key:/ {print $3}' /usr/local/etc/xray/.keys)
+pbk=$(awk -F': ' '/Password/ {print $2}' /usr/local/etc/xray/.keys)
 sid=$(awk -F': ' '/shortsid/ {print $2}' /usr/local/etc/xray/.keys)
 sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
 ip=$(curl -4 -s icanhazip.com)
@@ -477,8 +477,8 @@ cat << 'EOF' > $HOME/help
     /usr/local/etc/xray/.keys
     
 Формат ключей xray x25519:
-    Private key - приватный ключ для сервера (в config.json)
-    Public key - публичный ключ для клиента (pbk в ссылке)
+    PrivateKey - приватный ключ для сервера (в config.json)
+    Password - публичный ключ для клиента (pbk в ссылке)
 
 Команды:
     systemctl restart xray          # перезагрузка
