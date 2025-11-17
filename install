@@ -240,7 +240,7 @@ echo ${link} | qrencode -t ansiutf8
 SCRIPT
 chmod +x /usr/local/bin/newuser
 
-# Исполняемый файл для удаления клиентов (ОБНОВЛЕННЫЙ - удаление по email)
+# Исполняемый файл для удаления клиентов (ОБНОВЛЕННЫЙ - удаление по email!)
 cat << 'SCRIPT' > /usr/local/bin/rmuser
 #!/bin/bash
 CONFIG_FILE="/usr/local/etc/xray/config.json"
@@ -255,7 +255,9 @@ fi
 
 echo "Список клиентов:"
 for i in "${!emails[@]}"; do
-    echo "$((i+1)). ${emails[$i]}"
+    email="${emails[$i]}"
+    subscription=$(jq -r --arg email "$email" '.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
+    echo "$((i+1)). $email (подписка: $subscription)"
 done
 
 read -p "Введите номер клиента для удаления: " choice
@@ -273,7 +275,12 @@ if [[ "$selected_email" == "main" ]]; then
     exit 1
 fi
 
-# Удаляем по email (безопасно!)
+# Получаем UUID для логирования
+uuid=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .id' "$CONFIG_FILE")
+
+echo "Удаление пользователя: $selected_email (UUID: $uuid)"
+
+# Удаляем ПО EMAIL (не по индексу!)
 jq --arg email "$selected_email" \
    '.inbounds[0].settings.clients |= map(select(.email != $email))' \
    "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
@@ -378,7 +385,9 @@ chmod +x /usr/local/bin/userinfo
 # Новая команда для изменения статуса подписки
 cat << 'SCRIPT' > /usr/local/bin/togglesub
 #!/bin/bash
-emails=($(jq -r '.inbounds[0].settings.clients[].email' /usr/local/etc/xray/config.json))
+CONFIG_FILE="/usr/local/etc/xray/config.json"
+
+emails=($(jq -r '.inbounds[0].settings.clients[].email' "$CONFIG_FILE"))
 
 if [[ ${#emails[@]} -eq 0 ]]; then
     echo "Список клиентов пуст"
@@ -388,7 +397,7 @@ fi
 echo "Список клиентов:"
 for i in "${!emails[@]}"; do
     email="${emails[$i]}"
-    subscription=$(jq --argjson index "$i" -r '.inbounds[0].settings.clients[$index].metadata.subscription // "n/a"' /usr/local/etc/xray/config.json)
+    subscription=$(jq -r --arg email "$email" '.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
     echo "$((i+1)). $email (подписка: $subscription)"
 done
 
@@ -399,9 +408,10 @@ if ! [[ "$client" =~ ^[0-9]+$ ]] || (( client < 1 || client > ${#emails[@]} )); 
     exit 1
 fi
 
-selected_index=$((client - 1))
-selected_email="${emails[$selected_index]}"
-current_sub=$(jq --argjson index "$selected_index" -r '.inbounds[0].settings.clients[$index].metadata.subscription // "n"' /usr/local/etc/xray/config.json)
+selected_email="${emails[$((client - 1))]}"
+
+# Получаем текущую подписку
+current_sub=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription // "n"' "$CONFIG_FILE")
 
 # Переключаем подписку
 if [[ "$current_sub" == "y" ]]; then
@@ -410,10 +420,10 @@ else
     new_sub="y"
 fi
 
-# Обновляем конфиг
-jq --argjson index "$selected_index" --arg new_sub "$new_sub" \
-   '.inbounds[0].settings.clients[$index].metadata.subscription = $new_sub' \
-   /usr/local/etc/xray/config.json > tmp.json && mv tmp.json /usr/local/etc/xray/config.json
+# Обновляем конфиг по email
+jq --arg email "$selected_email" --arg new_sub "$new_sub" \
+   '(.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription) = $new_sub' \
+   "$CONFIG_FILE" > tmp.json && mv tmp.json "$CONFIG_FILE"
 
 echo ""
 echo "✅ Подписка пользователя $selected_email изменена: $current_sub → $new_sub"
@@ -463,6 +473,12 @@ cat << 'EOF' > $HOME/help
 
 Проверка ключей:
     cat /usr/local/etc/xray/.keys   # просмотр всех ключей
+
+Мониторинг и автоудаление:
+    Скачайте скрипт мониторинга:
+    wget https://raw.githubusercontent.com/LenderAuss/xray_users_monitor/main/auto_cleanup.sh
+    chmod +x auto_cleanup.sh
+    ./auto_cleanup.sh
 
 EOF
 
