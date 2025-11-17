@@ -240,7 +240,7 @@ echo ${link} | qrencode -t ansiutf8
 SCRIPT
 chmod +x /usr/local/bin/newuser
 
-# Исполняемый файл для удаления клиентов (ОБНОВЛЕННЫЙ - удаление по email!)
+# Исполняемый файл для удаления клиентов (ПО ИМЕНИ!)
 cat << 'SCRIPT' > /usr/local/bin/rmuser
 #!/bin/bash
 CONFIG_FILE="/usr/local/etc/xray/config.json"
@@ -260,14 +260,22 @@ for i in "${!emails[@]}"; do
     echo "$((i+1)). $email (подписка: $subscription)"
 done
 
-read -p "Введите номер клиента для удаления: " choice
+echo ""
+read -p "Введите имя клиента для удаления: " selected_email
 
-if ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#emails[@]} )); then
-    echo "Ошибка: номер должен быть от 1 до ${#emails[@]}"
+# Проверяем, что имя не пустое
+if [[ -z "$selected_email" ]]; then
+    echo "❌ Ошибка: имя не может быть пустым"
     exit 1
 fi
 
-selected_email="${emails[$((choice - 1))]}"
+# Проверяем существование пользователя
+user_exists=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .email' "$CONFIG_FILE")
+
+if [[ -z "$user_exists" ]]; then
+    echo "❌ Ошибка: пользователь '$selected_email' не найден"
+    exit 1
+fi
 
 # Защита главного пользователя
 if [[ "$selected_email" == "main" ]]; then
@@ -279,8 +287,14 @@ fi
 uuid=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .id' "$CONFIG_FILE")
 
 echo "Удаление пользователя: $selected_email (UUID: $uuid)"
+read -p "Подтвердите удаление (y/n): " confirm
 
-# Удаляем ПО EMAIL (не по индексу!)
+if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+    echo "Удаление отменено"
+    exit 0
+fi
+
+# Удаляем ПО EMAIL
 jq --arg email "$selected_email" \
    '.inbounds[0].settings.clients |= map(select(.email != $email))' \
    "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
@@ -442,7 +456,7 @@ cat << 'EOF' > $HOME/help
 
     mainuser - выводит ссылку для подключения основного пользователя
     newuser - создает нового пользователя (с указанием подписки)
-    rmuser - удаление пользователей (по email - безопасно!)
+    rmuser - удаление пользователей (по имени - безопасно!)
     sharelink - выводит список пользователей и позволяет создать для них ссылки
     userlist - выводит список клиентов с подписками и датами создания
     userinfo - показывает детальную информацию о выбранном пользователе
@@ -454,7 +468,7 @@ cat << 'EOF' > $HOME/help
     • Уникальный UUID для каждого
     • Отслеживание статуса подписки (y/n)
     • Дата создания ключа
-    • Удаление по email (защита от сбоя индексов!)
+    • Удаление по имени (защита от сбоя индексов!)
 
 Файл конфигурации:
     /usr/local/etc/xray/config.json
