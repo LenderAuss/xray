@@ -214,7 +214,7 @@ jq --arg email "$email" \
        }
    }]' /usr/local/etc/xray/config.json > tmp.json && mv tmp.json /usr/local/etc/xray/config.json
 
-systemctl reload xray
+systemctl restart xray
 
 # Генерируем ссылку
 protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
@@ -299,7 +299,7 @@ jq --arg email "$selected_email" \
    "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
 
 if [ $? -eq 0 ]; then
-    systemctl reload xray
+    systemctl restart xray
     echo "✅ Клиент $selected_email удалён."
 else
     echo "❌ Ошибка при удалении клиента $selected_email"
@@ -438,7 +438,7 @@ jq --arg email "$selected_email" --arg new_sub "$new_sub" \
    '(.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription) = $new_sub' \
    "$CONFIG_FILE" > tmp.json && mv tmp.json "$CONFIG_FILE"
 
-systemctl reload xray
+systemctl restart xray
 
 echo ""
 echo "✅ Подписка пользователя $selected_email изменена: $current_sub → $new_sub"
