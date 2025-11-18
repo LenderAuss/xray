@@ -1,18 +1,4 @@
 #!/bin/bash
-
-#################################################
-# ИЗМЕНЕНИЯ В ЭТОЙ ВЕРСИИ:
-# 1. SNI изменён на google.com (вместо ozon.ru)
-# 2. dest и serverNames согласованы: www.google.com:443
-# 3. Порт изменён на 21540 (вместо 443)
-# 4. Fingerprint изменён на chrome (вместо firefox)
-# 5. ВОЗВРАЩЕНА СТАРАЯ ЛОГИКА: используется /Password/ для pbk
-# 6. Все ссылки приведены к единому формату:
-#    type=tcp&security=reality&sni=...&fp=chrome&pbk=...&sid=...&spx=/&flow=...&encryption=none
-# 7. Унифицировано получение IP: timeout 3 curl -4 -s icanhazip.com
-# 8. Обновлена справка ~/help с правильным портом
-#################################################
-
 apt update
 apt install qrencode curl jq bc -y
 
@@ -86,11 +72,11 @@ cat << EOF > /usr/local/etc/xray/config.json
                 "security": "reality",
                 "realitySettings": {
                     "show": false,
-                    "dest": "www.google.com:443",
+                    "dest": "ozon.ru:443",
                     "xver": 0,
                     "serverNames": [
-                        "www.google.com",
-                        "google.com"
+                        "ozon.ru",
+                        "www.ozon.ru"
                     ],
                     "privateKey": "$privatkey",
                     "minClientVer": "",
@@ -167,9 +153,9 @@ port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
 uuid=$(jq -r '.inbounds[0].settings.clients[0].id' /usr/local/etc/xray/config.json)
 pbk=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/Password/ {print $2}')
 sid=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/shortsid/ {print $2}')
-sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[1]' /usr/local/etc/xray/config.json)
+sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
 ip=$(timeout 3 curl -4 -s icanhazip.com)
-link="$protocol://$uuid@$ip:$port?type=tcp&security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&flow=xtls-rprx-vision&encryption=none#main"
+link="$protocol://$uuid@$ip:$port?security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&type=tcp&flow=xtls-rprx-vision&encryption=none#main"
 echo ""
 echo "Ссылка для подключения:"
 echo "$link"
@@ -235,9 +221,9 @@ protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
 port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
 pbk=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/Password/ {print $2}')
 sid=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/shortsid/ {print $2}')
-sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[1]' /usr/local/etc/xray/config.json)
-ip=$(timeout 3 curl -4 -s icanhazip.com)
-link="$protocol://$uuid@$ip:$port?type=tcp&security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&flow=xtls-rprx-vision&encryption=none#$email"
+sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
+ip=$(curl -4 -s icanhazip.com)
+link="$protocol://$uuid@$ip:$port?security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&type=tcp&flow=xtls-rprx-vision&encryption=none#$email"
 
 echo ""
 echo "✅ Пользователь создан!"
@@ -352,9 +338,9 @@ port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
 uuid=$(jq --argjson index "$index" -r '.inbounds[0].settings.clients[$index].id' /usr/local/etc/xray/config.json)
 pbk=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/Password/ {print $2}')
 sid=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/shortsid/ {print $2}')
-sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[1]' /usr/local/etc/xray/config.json)
-ip=$(timeout 3 curl -4 -s icanhazip.com)
-link="$protocol://$uuid@$ip:$port?type=tcp&security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&flow=xtls-rprx-vision&encryption=none#$selected_email"
+sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
+ip=$(curl -4 -s icanhazip.com)
+link="$protocol://$uuid@$ip:$port?security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&type=tcp&flow=xtls-rprx-vision&encryption=none#$selected_email"
 echo ""
 echo "Ссылка для подключения:"
 echo "$link"
@@ -478,14 +464,12 @@ cat << 'EOF' > $HOME/help
     togglesub - переключает статус подписки пользователя (y/n)
 
 Особенности:
-    • Все пользователи на одном порту 21540
+    • Все пользователи на одном порту 443
     • Общие ключи Reality для всех (безопасно!)
     • Уникальный UUID для каждого
     • Отслеживание статуса подписки (y/n)
     • Дата создания ключа
     • Удаление ПО ИМЕНИ (защита от сбоя индексов!)
-    • SNI: google.com / www.google.com
-    • Fingerprint: chrome
 
 Файл конфигурации:
     /usr/local/etc/xray/config.json
