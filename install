@@ -309,38 +309,61 @@ SCRIPT
 chmod +x /usr/local/bin/rmuser
 
 # Исполняемый файл для вывода списка пользователей и создания ссылок
+# Исполняемый файл для вывода списка пользователей и создания ссылок
 cat << 'SCRIPT' > /usr/local/bin/sharelink
 #!/bin/bash
-emails=($(jq -r '.inbounds[0].settings.clients[].email' /usr/local/etc/xray/config.json))
+CONFIG_FILE="/usr/local/etc/xray/config.json"
+
+# Показываем список для справки
+emails=($(jq -r '.inbounds[0].settings.clients[].email' "$CONFIG_FILE"))
 
 if [[ ${#emails[@]} -eq 0 ]]; then
     echo "Список клиентов пуст"
     exit 1
 fi
 
-echo "Список клиентов:"
+echo "======================================================"
+echo "Список доступных клиентов:"
+echo "======================================================"
 for i in "${!emails[@]}"; do
-    echo "$((i+1)). ${emails[$i]}"
+    email="${emails[$i]}"
+    subscription=$(jq -r --arg email "$email" '.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
+    echo "$((i+1)). $email (подписка: $subscription)"
 done
+echo "======================================================"
+echo ""
 
-read -p "Выберите клиента: " client
+# Запрашиваем имя пользователя
+read -p "Введите имя пользователя: " selected_email
 
-if ! [[ "$client" =~ ^[0-9]+$ ]] || (( client < 1 || client > ${#emails[@]} )); then
-    echo "Ошибка: номер должен быть от 1 до ${#emails[@]}"
+# Проверяем, что имя не пустое
+if [[ -z "$selected_email" ]]; then
+    echo "❌ Ошибка: имя не может быть пустым"
     exit 1
 fi
 
-selected_email="${emails[$((client - 1))]}"
+# Проверяем существование пользователя
+user_exists=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .email' "$CONFIG_FILE")
 
-index=$(jq --arg email "$selected_email" '.inbounds[0].settings.clients | to_entries[] | select(.value.email == $email) | .key' /usr/local/etc/xray/config.json)
-protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
-port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
-uuid=$(jq --argjson index "$index" -r '.inbounds[0].settings.clients[$index].id' /usr/local/etc/xray/config.json)
+if [[ -z "$user_exists" ]]; then
+    echo "❌ Ошибка: пользователь '$selected_email' не найден"
+    exit 1
+fi
+
+# Получаем данные пользователя
+protocol=$(jq -r '.inbounds[0].protocol' "$CONFIG_FILE")
+port=$(jq -r '.inbounds[0].port' "$CONFIG_FILE")
+uuid=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .id' "$CONFIG_FILE")
 pbk=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/Password/ {print $2}')
 sid=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/shortsid/ {print $2}')
-sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
+sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$CONFIG_FILE")
 ip=$(curl -4 -s icanhazip.com)
+
+# Формируем ссылку
 link="$protocol://$uuid@$ip:$port?security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&type=tcp&flow=xtls-rprx-vision&encryption=none#$selected_email"
+
+echo ""
+echo "✅ Пользователь найден: $selected_email"
 echo ""
 echo "Ссылка для подключения:"
 echo "$link"
