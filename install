@@ -30,25 +30,15 @@ export shortsid=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/shortsid/ {print 
 # Получаем дату создания для main пользователя
 main_creation_date=$(date '+%Y-%m-%d %H:%M:%S')
 
-# Создаем файл конфигурации Xray (с Stats API!)
+# Создаем файл конфигурации Xray
 cat << EOF > /usr/local/etc/xray/config.json
 {
-    "stats": {},
-    "api": {
-        "tag": "api",
-        "services": ["StatsService"]
-    },
     "log": {
         "loglevel": "warning"
     },
     "routing": {
         "domainStrategy": "IPIfNonMatch",
         "rules": [
-            {
-                "type": "field",
-                "inboundTag": ["api"],
-                "outboundTag": "api"
-            },
             {
                 "type": "field",
                 "domain": [
@@ -60,17 +50,8 @@ cat << EOF > /usr/local/etc/xray/config.json
     },
     "inbounds": [
         {
-            "tag": "api",
-            "listen": "127.0.0.1",
-            "port": 10085,
-            "protocol": "dokodemo-door",
-            "settings": {
-                "address": "127.0.0.1"
-            }
-        },
-        {
             "listen": "0.0.0.0",
-            "port": 443,
+            "port": 57448,
             "protocol": "vless",
             "settings": {
                 "clients": [
@@ -121,10 +102,6 @@ cat << EOF > /usr/local/etc/xray/config.json
             "tag": "direct"
         },
         {
-            "protocol": "freedom",
-            "tag": "api"
-        },
-        {
             "protocol": "blackhole",
             "tag": "block"
         }
@@ -133,14 +110,8 @@ cat << EOF > /usr/local/etc/xray/config.json
         "levels": {
             "0": {
                 "handshake": 3,
-                "connIdle": 180,
-                "statsUserUplink": true,
-                "statsUserDownlink": true
+                "connIdle": 180
             }
-        },
-        "system": {
-            "statsInboundUplink": true,
-            "statsInboundDownlink": true
         }
     }
 }
@@ -149,7 +120,7 @@ EOF
 # Исполняемый файл для списка клиентов
 cat << 'SCRIPT' > /usr/local/bin/userlist
 #!/bin/bash
-clients=$(jq -c '.inbounds[1].settings.clients[]' /usr/local/etc/xray/config.json)
+clients=$(jq -c '.inbounds[0].settings.clients[]' /usr/local/etc/xray/config.json)
 
 if [[ -z "$clients" ]]; then
     echo "Список клиентов пуст"
@@ -177,12 +148,12 @@ chmod +x /usr/local/bin/userlist
 # Исполняемый файл для ссылки основного пользователя
 cat << 'SCRIPT' > /usr/local/bin/mainuser
 #!/bin/bash
-protocol=$(jq -r '.inbounds[1].protocol' /usr/local/etc/xray/config.json)
-port=$(jq -r '.inbounds[1].port' /usr/local/etc/xray/config.json)
-uuid=$(jq -r '.inbounds[1].settings.clients[0].id' /usr/local/etc/xray/config.json)
+protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
+port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
+uuid=$(jq -r '.inbounds[0].settings.clients[0].id' /usr/local/etc/xray/config.json)
 pbk=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/Password/ {print $2}')
 sid=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/shortsid/ {print $2}')
-sni=$(jq -r '.inbounds[1].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
+sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
 ip=$(timeout 3 curl -4 -s icanhazip.com)
 link="$protocol://$uuid@$ip:$port?security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&type=tcp&flow=xtls-rprx-vision&encryption=none#main"
 echo ""
@@ -205,7 +176,7 @@ if [[ -z "$email" || "$email" == *" "* ]]; then
 fi
 
 # Проверяем существование пользователя
-existing_user=$(jq --arg email "$email" '.inbounds[1].settings.clients[] | select(.email == $email)' /usr/local/etc/xray/config.json)
+existing_user=$(jq --arg email "$email" '.inbounds[0].settings.clients[] | select(.email == $email)' /usr/local/etc/xray/config.json)
 if [[ -n "$existing_user" ]]; then
     echo "Пользователь с таким именем уже существует. Попробуйте снова."
     exit 1
@@ -233,7 +204,7 @@ jq --arg email "$email" \
    --arg uuid "$uuid" \
    --arg subscription "$subscription" \
    --arg created_date "$creation_date" \
-   '.inbounds[1].settings.clients += [{
+   '.inbounds[0].settings.clients += [{
        "email": $email,
        "id": $uuid,
        "flow": "xtls-rprx-vision",
@@ -246,11 +217,11 @@ jq --arg email "$email" \
 systemctl restart xray
 
 # Генерируем ссылку
-protocol=$(jq -r '.inbounds[1].protocol' /usr/local/etc/xray/config.json)
-port=$(jq -r '.inbounds[1].port' /usr/local/etc/xray/config.json)
+protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
+port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
 pbk=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/Password/ {print $2}')
 sid=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/shortsid/ {print $2}')
-sni=$(jq -r '.inbounds[1].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
+sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' /usr/local/etc/xray/config.json)
 ip=$(curl -4 -s icanhazip.com)
 link="$protocol://$uuid@$ip:$port?security=reality&sni=$sni&fp=chrome&pbk=$pbk&sid=$sid&spx=/&type=tcp&flow=xtls-rprx-vision&encryption=none#$email"
 
@@ -274,7 +245,7 @@ cat << 'SCRIPT' > /usr/local/bin/rmuser
 CONFIG_FILE="/usr/local/etc/xray/config.json"
 
 # Получаем список email
-emails=($(jq -r '.inbounds[1].settings.clients[].email' "$CONFIG_FILE"))
+emails=($(jq -r '.inbounds[0].settings.clients[].email' "$CONFIG_FILE"))
 
 if [[ ${#emails[@]} -eq 0 ]]; then
     echo "Нет клиентов для удаления."
@@ -284,7 +255,7 @@ fi
 echo "Список клиентов:"
 for i in "${!emails[@]}"; do
     email="${emails[$i]}"
-    subscription=$(jq -r --arg email "$email" '.inbounds[1].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
+    subscription=$(jq -r --arg email "$email" '.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
     echo "$((i+1)). $email (подписка: $subscription)"
 done
 
@@ -298,7 +269,7 @@ if [[ -z "$selected_email" ]]; then
 fi
 
 # Проверяем существование пользователя
-user_exists=$(jq -r --arg email "$selected_email" '.inbounds[1].settings.clients[] | select(.email == $email) | .email' "$CONFIG_FILE")
+user_exists=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .email' "$CONFIG_FILE")
 
 if [[ -z "$user_exists" ]]; then
     echo "❌ Ошибка: пользователь '$selected_email' не найден"
@@ -312,7 +283,7 @@ if [[ "$selected_email" == "main" ]]; then
 fi
 
 # Получаем UUID для логирования
-uuid=$(jq -r --arg email "$selected_email" '.inbounds[1].settings.clients[] | select(.email == $email) | .id' "$CONFIG_FILE")
+uuid=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .id' "$CONFIG_FILE")
 
 echo "Удаление пользователя: $selected_email (UUID: $uuid)"
 read -p "Подтвердите удаление (y/n): " confirm
@@ -324,7 +295,7 @@ fi
 
 # Удаляем ПО EMAIL
 jq --arg email "$selected_email" \
-   '.inbounds[1].settings.clients |= map(select(.email != $email))' \
+   '.inbounds[0].settings.clients |= map(select(.email != $email))' \
    "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
 
 if [ $? -eq 0 ]; then
@@ -338,12 +309,13 @@ SCRIPT
 chmod +x /usr/local/bin/rmuser
 
 # Исполняемый файл для вывода списка пользователей и создания ссылок
+# Исполняемый файл для вывода списка пользователей и создания ссылок
 cat << 'SCRIPT' > /usr/local/bin/sharelink
 #!/bin/bash
 CONFIG_FILE="/usr/local/etc/xray/config.json"
 
 # Показываем список для справки
-emails=($(jq -r '.inbounds[1].settings.clients[].email' "$CONFIG_FILE"))
+emails=($(jq -r '.inbounds[0].settings.clients[].email' "$CONFIG_FILE"))
 
 if [[ ${#emails[@]} -eq 0 ]]; then
     echo "Список клиентов пуст"
@@ -355,7 +327,7 @@ echo "Список доступных клиентов:"
 echo "======================================================"
 for i in "${!emails[@]}"; do
     email="${emails[$i]}"
-    subscription=$(jq -r --arg email "$email" '.inbounds[1].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
+    subscription=$(jq -r --arg email "$email" '.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
     echo "$((i+1)). $email (подписка: $subscription)"
 done
 echo "======================================================"
@@ -371,7 +343,7 @@ if [[ -z "$selected_email" ]]; then
 fi
 
 # Проверяем существование пользователя
-user_exists=$(jq -r --arg email "$selected_email" '.inbounds[1].settings.clients[] | select(.email == $email) | .email' "$CONFIG_FILE")
+user_exists=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .email' "$CONFIG_FILE")
 
 if [[ -z "$user_exists" ]]; then
     echo "❌ Ошибка: пользователь '$selected_email' не найден"
@@ -379,12 +351,12 @@ if [[ -z "$user_exists" ]]; then
 fi
 
 # Получаем данные пользователя
-protocol=$(jq -r '.inbounds[1].protocol' "$CONFIG_FILE")
-port=$(jq -r '.inbounds[1].port' "$CONFIG_FILE")
-uuid=$(jq -r --arg email "$selected_email" '.inbounds[1].settings.clients[] | select(.email == $email) | .id' "$CONFIG_FILE")
+protocol=$(jq -r '.inbounds[0].protocol' "$CONFIG_FILE")
+port=$(jq -r '.inbounds[0].port' "$CONFIG_FILE")
+uuid=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .id' "$CONFIG_FILE")
 pbk=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/Password/ {print $2}')
 sid=$(cat /usr/local/etc/xray/.keys | awk -F': ' '/shortsid/ {print $2}')
-sni=$(jq -r '.inbounds[1].streamSettings.realitySettings.serverNames[0]' "$CONFIG_FILE")
+sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$CONFIG_FILE")
 ip=$(curl -4 -s icanhazip.com)
 
 # Формируем ссылку
@@ -404,7 +376,7 @@ chmod +x /usr/local/bin/sharelink
 # Новая команда для просмотра детальной информации о пользователе
 cat << 'SCRIPT' > /usr/local/bin/userinfo
 #!/bin/bash
-emails=($(jq -r '.inbounds[1].settings.clients[].email' /usr/local/etc/xray/config.json))
+emails=($(jq -r '.inbounds[0].settings.clients[].email' /usr/local/etc/xray/config.json))
 
 if [[ ${#emails[@]} -eq 0 ]]; then
     echo "Список клиентов пуст"
@@ -427,11 +399,11 @@ selected_index=$((client - 1))
 selected_email="${emails[$selected_index]}"
 
 # Получаем всю информацию
-protocol=$(jq -r '.inbounds[1].protocol' /usr/local/etc/xray/config.json)
-port=$(jq -r '.inbounds[1].port' /usr/local/etc/xray/config.json)
-uuid=$(jq --argjson index "$selected_index" -r '.inbounds[1].settings.clients[$index].id' /usr/local/etc/xray/config.json)
-subscription=$(jq --argjson index "$selected_index" -r '.inbounds[1].settings.clients[$index].metadata.subscription // "n/a"' /usr/local/etc/xray/config.json)
-created_date=$(jq --argjson index "$selected_index" -r '.inbounds[1].settings.clients[$index].metadata.created_date // "n/a"' /usr/local/etc/xray/config.json)
+protocol=$(jq -r '.inbounds[0].protocol' /usr/local/etc/xray/config.json)
+port=$(jq -r '.inbounds[0].port' /usr/local/etc/xray/config.json)
+uuid=$(jq --argjson index "$selected_index" -r '.inbounds[0].settings.clients[$index].id' /usr/local/etc/xray/config.json)
+subscription=$(jq --argjson index "$selected_index" -r '.inbounds[0].settings.clients[$index].metadata.subscription // "n/a"' /usr/local/etc/xray/config.json)
+created_date=$(jq --argjson index "$selected_index" -r '.inbounds[0].settings.clients[$index].metadata.created_date // "n/a"' /usr/local/etc/xray/config.json)
 
 echo ""
 echo "======================================================"
@@ -451,7 +423,7 @@ cat << 'SCRIPT' > /usr/local/bin/togglesub
 #!/bin/bash
 CONFIG_FILE="/usr/local/etc/xray/config.json"
 
-emails=($(jq -r '.inbounds[1].settings.clients[].email' "$CONFIG_FILE"))
+emails=($(jq -r '.inbounds[0].settings.clients[].email' "$CONFIG_FILE"))
 
 if [[ ${#emails[@]} -eq 0 ]]; then
     echo "Список клиентов пуст"
@@ -461,7 +433,7 @@ fi
 echo "Список клиентов:"
 for i in "${!emails[@]}"; do
     email="${emails[$i]}"
-    subscription=$(jq -r --arg email "$email" '.inbounds[1].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
+    subscription=$(jq -r --arg email "$email" '.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription // "n/a"' "$CONFIG_FILE")
     echo "$((i+1)). $email (подписка: $subscription)"
 done
 
@@ -475,7 +447,7 @@ fi
 selected_email="${emails[$((client - 1))]}"
 
 # Получаем текущую подписку
-current_sub=$(jq -r --arg email "$selected_email" '.inbounds[1].settings.clients[] | select(.email == $email) | .metadata.subscription // "n"' "$CONFIG_FILE")
+current_sub=$(jq -r --arg email "$selected_email" '.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription // "n"' "$CONFIG_FILE")
 
 # Переключаем подписку
 if [[ "$current_sub" == "y" ]]; then
@@ -486,7 +458,7 @@ fi
 
 # Обновляем конфиг по email
 jq --arg email "$selected_email" --arg new_sub "$new_sub" \
-   '(.inbounds[1].settings.clients[] | select(.email == $email) | .metadata.subscription) = $new_sub' \
+   '(.inbounds[0].settings.clients[] | select(.email == $email) | .metadata.subscription) = $new_sub' \
    "$CONFIG_FILE" > tmp.json && mv tmp.json "$CONFIG_FILE"
 
 systemctl restart xray
@@ -498,7 +470,7 @@ chmod +x /usr/local/bin/togglesub
 
 systemctl restart xray
 
-echo "Xray-core успешно установлен (с Stats API!)"
+echo "Xray-core успешно установлен"
 mainuser
 
 # Создаем файл с подсказками
@@ -521,7 +493,6 @@ cat << 'EOF' > $HOME/help
     • Отслеживание статуса подписки (y/n)
     • Дата создания ключа
     • Удаление ПО ИМЕНИ (защита от сбоя индексов!)
-    • Stats API включен (порт 10085) для мониторинга трафика
 
 Файл конфигурации:
     /usr/local/etc/xray/config.json
@@ -541,8 +512,11 @@ cat << 'EOF' > $HOME/help
 Проверка ключей:
     cat /usr/local/etc/xray/.keys   # просмотр всех ключей
 
-Мониторинг трафика:
-    wget -qO- https://raw.githubusercontent.com/LenderAuss/xray-traffic-monitor/main/install_python_monitor.sh | sudo bash
+Мониторинг и автоудаление:
+    Скачайте скрипт мониторинга:
+    wget https://raw.githubusercontent.com/LenderAuss/xray_users_monitor/main/auto_cleanup.sh
+    chmod +x auto_cleanup.sh
+    ./auto_cleanup.sh
 
 EOF
 
